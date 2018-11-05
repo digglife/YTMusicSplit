@@ -30,8 +30,14 @@ import click
 
 def generate_audio_chunk(audio, start, end, output):
     logging.info('Generating {} [{} - {}]'.format(output, start, end))
+    command = 'mpv "{}" --really-quiet --start {} --end {} -o "{}"'
     subprocess.run(command.format(audio, start, end, output), shell=True)
 
+def parse_timeline(line):
+    m = re.search(r'(?:\d+:)?\d+:\d+', line)
+    timestamp = m.group()
+    title = line.replace(timestamp, '').strip('- \t\r\n')
+    return (timestamp, title)
 
 def split_audio_with_raw_timeline(audio, timeline, encode='mp3', **id3tags):
     # id3tags could be album, album_artist, album_cover, artist, release_date, etc
@@ -39,17 +45,19 @@ def split_audio_with_raw_timeline(audio, timeline, encode='mp3', **id3tags):
     start = end = current_title = output = None
     count = 1
     audios = []
-    command = 'mpv "{}" --really-quiet --start {} --end {} -o "{}"'
 
     with open(timeline, 'r') as f:
         for l in f:
-            m = re.match(r'^([0-9:]+)\s+(.*)', l.strip())
-            timeframe, title = m.groups()
-            end = timeframe
+            """ possible timeline formats:
+            00:04:49 Trailer Theme 3
+            Trailer Theme 3 04:49
+            """
+            timestamp, title = parse_timeline(l)
+            end = timestamp
             if start and end:
                 generate_audio_chunk(audio, start, end, output)
                 add_id3_tags(output, track_num=count, title=current_title, **id3tags)
-            start = timeframe
+            start = timestamp
             current_title = title
             output = os.path.join(audio_path, '{}.{}'.format(title, encode))
             audios.append(output)
